@@ -6,7 +6,7 @@ email: coreyloo95@gmail.com
 
 # Independent Projects in R
 
-## [Aphantasia Research Project]([Aphantasia_research_project/](https://htmlpreview.github.io/?https://github.com/CoreyLoo/CLoo_Online_Portfolio/blob/dcce950bbeff5d67b190d9fa1fb1669ecdf32f2d/Aphantasia_research_project/analysis_aphantasia.html))
+## [Aphantasia Research Project](https://htmlpreview.github.io/?https://github.com/CoreyLoo/CLoo_Online_Portfolio/blob/dcce950bbeff5d67b190d9fa1fb1669ecdf32f2d/Aphantasia_research_project/analysis_aphantasia.html)
 
 
 # Independent Projects in Python
