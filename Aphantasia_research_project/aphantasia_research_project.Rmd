@@ -1,0 +1,920 @@
+---
+title: "Aphantasia_analysis"
+author: "Corey"
+date: "01/02/2024"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+
+```
+
+
+```{r load libraries, echo=FALSE, message=FALSE}
+
+library(tidyverse)
+
+library(ggpubr)
+library(lme4)
+library(lmerTest)
+library(plyr)
+library(imager)
+library(data.table)
+
+# These packages are used to format the output of linear models
+library(sjPlot)
+library(report)
+
+```
+
+
+```{r load BIS function, echo=FALSE}
+
+# This cell creates a function to calculate the balanced integration score 
+# (Leisefeld and Janczyk, 2019).
+# The balanced integration score is a measure of decision performance that accounts
+# for speed-accuracy trade offs.
+
+# The code to compute the balanced integration score was from 
+# https://github.com/Liesefeld/BIS/blob/master/BIS_R.R
+
+BIS <- function(data) {
+  n <- length(data$group)    # sample size to correct var()-function result (which uses n-1)
+  srt <- sqrt( ((n-1)/n) * var(data$mean_rt_c) )     # sample standard deviation across all rts
+  spc <- sqrt( ((n-1)/n) * var(data$pc) )            # sample standard deviation across all rts
+  mrt <- mean(data$mean_rt_c)                        # mean across all rts
+  mpc <- mean(data$pc)                               # mean across all pcs
+  zrt <- (data$mean_rt_c-mrt)/srt                    # standardized rts
+  zpc <- (data$pc-mpc)/spc                           # z-standardized pcs
+  data$bis <- zpc - zrt                              # Balanced Integration Score
+  
+  return(data)                                       # return data.frame with added variable 'bis'
+}
+
+```
+
+
+
+```{r load data, echo=FALSE, message=FALSE}
+
+# Load in aphantasia Data ------------------
+
+# Participants with aphantasia were collected from reddit and facebook groups
+# Control participants were collected through prolific, an online psychology 
+# experiment hosting platform.
+
+# get a list of the files to be read in from each group directory
+data_files_aphantasia_reddit <- list.files("data/aphantasia_reddit")
+data_files_aphantasia_facebook <- list.files("data/aphantasia_facebook")
+data_files_prolific_control <- list.files("data/prolific_control/")
+
+# Read each participant's file and concatonate them into a single dataframe
+
+## For aphantasia participants collected through reddit
+aphantasia_project_data_reddit <- do.call(
+  rbind, 
+  lapply(data_files_aphantasia_reddit, function(data_file){
+  df <- read.csv(paste0("data/aphantasia_reddit/", data_file), header=TRUE)
+
+  ### The raw data files have a lot of meta data about the run time of the 
+  ### program that runs the experiment.
+  ### This selects only the variables that are related to participant performace
+  ### and the experimental design and conditions.
+  df <- data.table(select(df,c(categorization_key.keys,
+                               categorization_key.corr,
+                               categorization_key.rt,
+                               categories:participant,
+                               cb
+                               )))
+  ### Filter out trials in which no response was made
+  df <- na.omit(df, cols="categorization_key.rt")
+  
+  ### Filter out trials from the practice block
+  df <- df %>% filter(block_num !="practice")
+}))
+
+## For participants collected through facebook
+aphantasia_project_data_facebook <- do.call(
+  rbind, 
+  lapply(data_files_aphantasia_facebook, function(data_file){
+  df <- read.csv(paste0("data/aphantasia_facebook/", data_file), header=TRUE)
+  df <- data.table(select(df,c(categorization_key.keys,
+                               categorization_key.corr,
+                               categorization_key.rt,
+                               categories:participant,
+                               cb
+                               )))
+  df <- na.omit(df, cols="categorization_key.rt")
+  df <- df %>% filter(block_num !="practice")
+}))
+
+aphantasia_project_data_prolific <- do.call(rbind, lapply(data_files_prolific_control, function(data_file){
+  df <- read.csv(paste0("data/prolific_control/", data_file), header=TRUE)
+  df <- data.table(select(df,c(categorization_key.keys,
+                               categorization_key.corr,
+                               categorization_key.rt,
+                               categories:participant,
+                               cb
+                               )))
+  df <- na.omit(df, cols="categorization_key.rt")
+  df <- df %>% filter(block_num !="practice")
+}))
+
+
+## Load in Prolific Pilot Data
+## 6_25 refers to the final settings I used for the gaussian bubble mask
+## 6 is the number of bubbles in the mask, while 25 refers to the standard
+## deviation (the size) of the gaussian pattern used to make the bubbles
+data_files_6_25 <- list.files("data/6_25")
+
+
+aphantasia_project_data_6_25 <- do.call(rbind, lapply(data_files_6_25, function(data_file){
+  df <- read.csv(paste0("data/6_25/", data_file), header=TRUE)
+  df <- data.table(select(df,c(categorization_key.keys,
+                               categorization_key.corr,
+                               categorization_key.rt,
+                               categories:participant,
+                               cb
+                               )))
+  df <- na.omit(df, cols="categorization_key.rt")
+  df <- df %>% filter(block_num !="practice")
+}))
+
+# Stimulus onset asynchrony (SOA)
+# This refers to how long an image was presented on the given trial
+# The design files have this in units of seconds, but for analysis we want them
+# in milliseconds.
+aphantasia_project_data_reddit$SOA <- aphantasia_project_data_reddit$SOA*1000
+aphantasia_project_data_facebook$SOA <- aphantasia_project_data_facebook$SOA*1000
+aphantasia_project_data_prolific$SOA <- aphantasia_project_data_prolific$SOA*1000
+aphantasia_project_data_6_25$SOA <- aphantasia_project_data_6_25$SOA*1000
+
+## Add source
+## Load in pixel index
+
+# Because the images are presented through a bubble mask, only a portion
+# of the image is visible. The percentage of the visible image
+# is stored in a separate file
+# This data was not used in this analysis.
+
+#pixel_index_all_cb <- read.csv("pixel_index_all_cb_aphantasia_2.csv")
+
+# Load in VVIQ scores ----------------------
+# The VVIQ is a questionnaire that measures the vividness of your visual mental
+# imagery. We used this survey to verify participants with aphantasia.
+
+vviq_test <- read.csv("VVIQ.csv", header = TRUE)
+
+## Exclude the first 3 subjects as these were me testing out the survey
+vviq_test <- vviq_test[4:nrow(vviq_test),c(4:37)]
+
+colnames(vviq_test)[1] <- "identifier"
+colnames(vviq_test)[2] <- "age"
+ages <- vviq_test[,1:2]
+vviq_gather <- vviq_test %>%
+  gather("Question","Response", 3:34)
+
+# Convert VVIQ responses to a numeric score
+
+## The VVIQ consists of 32 question, each scored from 1-5
+## Scores can range from 32 to 160
+## Here a high score represents low vividness of mental imagery, as we wanted
+## to identify individuals with aphantasia.
+vviq_gather <- vviq_gather %>%
+  mutate(score = case_when(
+    Response == "No image at all" ~ 5,
+    Response == "Vague and dim" ~ 4,
+    Response == "Moderately vivid and clear" ~ 3,
+    Response == "Reasonably vivid and clear" ~ 2,
+    TRUE ~ 1
+  ))
+
+# Get the mean vviq score for each participant across all questions in the survey
+vviq_summary <- vviq_gather %>%
+  group_by(identifier) %>%
+  dplyr::summarize(scoring = mean(score))
+
+# Get the total score for each participant, summing all questions
+vviq_sum <- vviq_gather %>%
+  group_by(identifier) %>%
+  dplyr::summarize(score_sum = sum(score))
+
+# Concatonate
+vviq_summary <- left_join(vviq_summary, vviq_sum,
+                          by = c("identifier" = "identifier"))
+
+
+# add in pixel indices ---------------------
+
+##
+#aphantasia_project_data_reddit$block_num <- #as.numeric(aphantasia_project_data_reddit$block_num) 
+#
+#aphantasia_project_data_reddit <- left_join(aphantasia_project_data_reddit, pixel_index_all_cb, #by = c("image_types" = "image_types", "block_num" = "version", "cb" = "cb"))
+#
+#aphantasia_project_data_reddit <- aphantasia_project_data_reddit %>%
+#  mutate(percent_visible = ifelse(.$bubbled == "no", 1, .$percent_visible))
+#aphantasia_project_data_reddit <- aphantasia_project_data_reddit %>% mutate(per_vis_bin = #round_any(as.numeric(percent_visible), 0.1))
+#
+### For facebook
+#aphantasia_project_data_facebook$block_num <- #as.numeric(aphantasia_project_data_facebook$block_num) 
+#
+#aphantasia_project_data_facebook <- left_join(aphantasia_project_data_facebook, #pixel_index_all_cb, by = c("image_types" = "image_types", "block_num" = "version", "cb" = #"cb"))
+#
+#aphantasia_project_data_facebook <- aphantasia_project_data_facebook %>%
+#  mutate(percent_visible = ifelse(.$bubbled == "no", 1, .$percent_visible))
+#aphantasia_project_data_facebook <- aphantasia_project_data_facebook %>% mutate(per_vis_bin = #round_any(as.numeric(percent_visible), 0.1))
+#
+#aphantasia_project_data <- rbind(aphantasia_project_data_reddit, #aphantasia_project_data_facebook)
+#
+#
+#####
+#aphantasia_project_data_prolific$block_num <- #as.numeric(aphantasia_project_data_prolific$block_num) 
+#
+#aphantasia_project_data_prolific <- left_join(aphantasia_project_data_prolific, #pixel_index_all_cb, by = c("image_types" = "image_types", "block_num" = "version", "cb" = #"cb"))
+#
+#aphantasia_project_data_prolfiic <- aphantasia_project_data_prolific %>%
+#  mutate(percent_visible = ifelse(.$bubbled == "no", 1, .$percent_visible))
+#aphantasia_project_data_prolific <- aphantasia_project_data_prolific %>% mutate(per_vis_bin = #round_any(as.numeric(percent_visible), 0.1))
+#
+#aphantasia_project_data <- rbind(aphantasia_project_data_reddit, #aphantasia_project_data_facebook, aphantasia_project_data_prolific)
+#
+###For controls
+#
+#aphantasia_project_data_6_25$block_num <- as.numeric(aphantasia_project_data_6_25$block_num)
+#aphantasia_project_data_6_25 <- left_join(aphantasia_project_data_6_25, pixel_index_all_cb, by #= c("image_types" = "image_types", "block_num" = "version", "cb" = "cb"))
+#
+#aphantasia_project_data_6_25 <- aphantasia_project_data_6_25 %>%
+#  mutate(percent_visible = ifelse(.$bubbled == "no", 1, .$percent_visible))
+#aphantasia_project_data_6_25 <- aphantasia_project_data_6_25 %>% mutate(per_vis_bin = #round_any(as.numeric(percent_visible), 0.1))
+
+control_ages <- read.csv("prolific_demo.csv", header = TRUE) %>%
+  select(Participant.id, Age)
+colnames(control_ages) <- c("participant", "age")
+
+```
+
+
+```{r average performace by participant, echo=FALSE}
+
+# The average performance and reaction time for each factor combination is
+# calculated for each participant
+
+## Average aphantasia group
+
+aphantasia_participant_data_reddit <- aphantasia_project_data_reddit %>%
+  group_by(participant, bubbled, back_masked, SOA) %>%
+  dplyr::summarize(Accuracy = mean(categorization_key.corr), 
+                   RT = mean(categorization_key.rt))
+
+aphantasia_participant_data_reddit <- left_join(aphantasia_participant_data_reddit,
+                                                vviq_summary, 
+                                         by = c("participant" = "identifier"))
+aphantasia_participant_data_reddit <- left_join(aphantasia_participant_data_reddit,
+                                                ages,
+                                         by = c("participant" = "identifier"))
+
+## Facebook
+
+aphantasia_participant_data_facebook <- aphantasia_project_data_facebook %>%
+  group_by(participant, bubbled, back_masked, SOA) %>%
+  dplyr::summarize(Accuracy = mean(categorization_key.corr), 
+                   RT = mean(categorization_key.rt))
+
+aphantasia_participant_data_facebook <- left_join(aphantasia_participant_data_facebook,
+                                                vviq_summary, 
+                                         by = c("participant" = "identifier"))
+aphantasia_participant_data_facebook <- left_join(aphantasia_participant_data_facebook,
+                                                ages,
+                                         by = c("participant" = "identifier"))
+
+## Age matched controls
+
+aphantasia_participant_data_prolific <- aphantasia_project_data_prolific %>%
+  group_by(participant, bubbled, back_masked, SOA) %>%
+  dplyr::summarize(Accuracy = mean(categorization_key.corr), 
+                   RT = mean(categorization_key.rt))
+
+aphantasia_participant_data_prolific <- left_join(aphantasia_participant_data_prolific,
+                                                vviq_summary, 
+                                         by = c("participant" = "identifier"))
+aphantasia_participant_data_prolific <- left_join(aphantasia_participant_data_prolific,
+                                                ages,
+                                         by = c("participant" = "identifier"))
+
+## Average control group
+
+aphantasia_control_data <- aphantasia_project_data_6_25 %>%
+  group_by(participant, bubbled, back_masked, SOA) %>%
+  dplyr::summarize(Accuracy = mean(categorization_key.corr), RT = mean(categorization_key.rt))
+
+aphantasia_control_data <- left_join(aphantasia_control_data, control_ages,
+                                     by = c("participant" ="participant"))
+
+## categorized if aphantasic
+## Recall that VVIQ scores are used to identify individuals with aphantasia
+## There are a few cut off points you can use to identify someone as aphantasic.
+
+## One is to select participants whose average score across all questions was
+## less than 3 (Each question is scored between 1-5)
+aphantasia_participant_data_reddit$aphantasia <- ifelse(aphantasia_participant_data_reddit$scoring >3, "yes", "no")
+
+aphantasia_participant_data_facebook$aphantasia <- ifelse(aphantasia_participant_data_facebook$scoring >3, "yes", "no")
+
+aphantasia_participant_data_prolific$aphantasia <- ifelse(aphantasia_participant_data_prolific$scoring >3, "yes", "no")
+aphantasia_control_data$aphantasia <- "no"
+
+
+## add source
+aphantasia_participant_data_reddit$source <- "reddit"
+aphantasia_participant_data_facebook$source <- "facebook"
+aphantasia_participant_data_prolific$source <- "prolific"
+aphantasia_control_data$source <- "prolific"
+
+## combine control and aphantasia groups
+
+aphantasia_aggregate_data <- rbind(aphantasia_participant_data_reddit,
+                                   aphantasia_participant_data_facebook,
+                                   aphantasia_control_data,
+                                   aphantasia_participant_data_prolific)
+
+aphantasia_aggregate_data$group <- ifelse(aphantasia_aggregate_data$aphantasia == "yes",1,2)
+
+# For the BIS function defined at the beginning to run, the columns contaning
+#participant accuracy and reaction time need to have specific names.
+aphantasia_aggregate_data$pc <- aphantasia_aggregate_data$Accuracy
+aphantasia_aggregate_data$mean_rt_c <- aphantasia_aggregate_data$RT
+aphantasia_aggregate_data <- BIS(aphantasia_aggregate_data)
+
+```
+
+Aphantasia is a recently described condition in which the individual does not exprience mental imagery. For example, when asked to visualize an apple in your mind's eye, most of use would internally conjure an image of an apple, as if we were actually seeing it.
+For those with aphantasia, this internal image is often interpreted as a metaphor, and they often report thinking of the apple semantically ("I know it is a round red fruit")
+
+In this study, we were interested in investigating how individuals with aphantasia process visual information. In particular, we wanted to see if their visual processing is more or less robust than that of individuals who do not have aphantasia.
+
+
+Here we had them complete a visual categorization task. Briefly, on each trial an image of an object was presented for a short duration (for 25 ms, 50 ms, 75 ms, 100 ms, or 150 ms), and participants were required to identify which category the object belonged to (Clothing, Food, Tools, Toys).
+
+There were two critical manipulations.
+First is that on 80% of the trials, the images were presented in a partially occluded manner in which portions of the image were presented through bubbles. This requires participants to mentally fill in the rest of the image in order to successfully identify and categorize the object.
+
+```{r Display sample images, echo=FALSE}
+
+# Display an example of the stimuli
+shorts_1 <- load.image("ActivewearShorts_bubble_1.jpg")
+shorts_2 <- load.image("ActivewearShorts_grayscaled_1.png")
+
+plot(shorts_2)
+plot(shorts_1)
+```
+
+
+Second is that on 50% of the trials, the images were followed by a visual noise mask (referred to as back masking). This noise mask is intended to disrupt visual processing, specifically the mental operation of filling in the missing portions of the image.
+
+```{r Display an example of mask, echo=FALSE}
+
+# Display an example of the visual noise mask
+vnoise <- load.image("noise_mask.jpg")
+plot(vnoise)
+
+```
+
+Given that individuals with aphantasia operate on more abstract terms, we were interested in seeing how, if at all, their visual processing would be disrupted by visual noise.
+
+```{r Design of the Experiment, echo=FALSE}
+
+# Display an image of the experimental design
+schematic <- load.image("basic schematic.png")
+plot(schematic)
+
+```
+
+*Above is an outline of how a trial would proceed. Trials began with a fixation cross for 500 ms. This was then followed by the presentation of an image for a variable duration (25 ms, 50 ms, 75 ms, 100 ms, 150 ms). The image was the followed by either a blank screen or a visual noise mask for 500 ms. Trials concluded with a forced choice categorization task. Participants indicated which of the four groups (Clothing, Food, Tools, Toys) that the object in the image belonged to. Participants had up to 10 seconds to respond.*
+
+
+
+# Accuracy Analysis
+
+Here we present accuracy for the categorization task.
+
+The left graph is data from participants *with aphantasia*. 
+The right is control data of participants *without aphantasia*
+
+
+## Partially occluded images
+
+These graphs show categorization accuracy for backmasked vs unmasked images for *partially occluded images* against stimulus duration.
+
+Performance increases with stimulus duration. It's easier to categorize when you see the image for longer.
+Performance also decreases with back masking. The presentation of visual noise following the image inhibits categorization performance.
+
+These patterns are present for both participants with Aphantasia and participants from Prolific.
+
+
+```{r accuracy by soa, echo=FALSE}
+
+# Create graphs for accuracy data
+
+## For bubbled images
+
+aphantasia_accuracy_bubbled <- ggline(aphantasia_aggregate_data %>% 
+                                        filter(bubbled == "yes", aphantasia == "yes"), 
+       x = "SOA", 
+       y = "Accuracy",
+       color = "back_masked", add = "mean_se",
+       ylim = c(0.3,0.8),
+       font.x = c(32, "black"),
+       font.y = c(32, "black")
+       ) +
+  xlab("Stimulus duration (ms)") +
+  ylab("Accuracy") +
+  labs(title = "(A)"
+       #,subtitle = "Aphantasia (Occluded Images)"
+       ) +
+  font("xy.text", size = 24)+
+  font("legend.text", size = 22) +
+  theme(plot.title = element_text(face = "bold", size =32),
+        legend.title = element_text(size = 22)) +
+  scale_color_discrete(name = "Backward Masked", labels = c("No", "Yes"))
+  #      axis.title = element_text(size = 20), 
+  #      axis.text = element_text(size=16),
+  #      legend.title = element_text(size = 16),
+  #      legend.text = element_text(size = 14))
+
+
+control_accuracy_bubbled <- ggline(aphantasia_aggregate_data %>% 
+                                     filter(bubbled == "yes", aphantasia == "no"), 
+       x = "SOA", 
+       y = "Accuracy",
+       color = "back_masked", add = "mean_se",
+       ylim = c(0.3,0.8),
+       font.x = c(32, "black"),
+       font.y = c(32, "black")
+       ) +
+  xlab("Stimulus duration (ms)") +
+  ylab("Accuracy") +
+  labs(title = "(B)"
+       #,subtitle = "Control (Occluded Images)"
+       ) +
+  font("xy.text", size = 24)+
+  font("legend.text", size = 22) +
+  theme(plot.title = element_text(face = "bold", size =32),
+        legend.title = element_text(size = 22)) +
+  scale_color_discrete(name = "Backward Masked", labels = c("No", "Yes"))
+  #      axis.title = element_text(size = 20), 
+  #      axis.text = element_text(size=16),
+  #      legend.title = element_text(size = 16),
+  #      legend.text = element_text(size = 14))
+
+## For full images
+
+aphantasia_accuracy_full <- ggline(aphantasia_aggregate_data %>% 
+                                     filter(bubbled == "no", aphantasia == "yes"), 
+       x = "SOA", 
+       y = "Accuracy",
+       color = "back_masked", add = "mean_se",
+       ylim = c(0.7,1),
+       font.x = c(32, "black"),
+       font.y = c(32, "black")) +
+  xlab("Stimulus duration (ms)") +
+  ylab("Accuracy") +
+  labs(title = "(A)"
+       #,subtitle = "Aphantasia (Unoccluded Images)"
+       ) +
+  font("xy.text", size = 24)+
+  font("legend.text", size = 22) +
+  theme(plot.title = element_text(face = "bold", size =32),
+        legend.title = element_text(size = 22)) +
+  scale_color_discrete(name = "Backward Masked", labels = c("No", "Yes"))
+  #      axis.title = element_text(size = 20), 
+  #      axis.text = element_text(size=16),
+  #      legend.text = element_text(size = 14))
+
+
+control_accuracy_full <- ggline(aphantasia_aggregate_data %>% 
+                                  filter(bubbled == "no", aphantasia == "no"), 
+       x = "SOA", 
+       y = "Accuracy",
+       color = "back_masked", add = "mean_se",
+       ylim = c(0.7,1),
+       font.x = c(32, "black"),
+       font.y = c(32, "black")) +
+  xlab("Stimulus duration (ms)") +
+  ylab("Accuracy") +
+  labs(title = "(B)"
+       #,subtitle = "Control (Unoccluded Images)"
+       ) +
+  font("xy.text", size = 24)+
+  font("legend.text", size = 22) +
+  theme(plot.title = element_text(face = "bold", size =32),
+        legend.title = element_text(size = 22)) +
+  scale_color_discrete(name = "Backward Masked", labels = c("No", "Yes"))
+  #      axis.title = element_text(size = 20), 
+  #      axis.text = element_text(size=16),
+  #      legend.title = element_text(size = 16),
+  #      legend.text = element_text(size = 14))
+
+acc_bubble <- ggarrange(aphantasia_accuracy_bubbled,control_accuracy_bubbled)
+acc_bubble
+#ggexport(acc_bubble,filename = "plots/plot_acc_bubbled_2.png",height = 600, width = 1000)
+ggexport(acc_bubble,filename = "plots/figure_14.png",height = 600, width = 1000)
+
+```
+  
+  
+  
+  
+  
+
+## Unoccluded images
+
+This second set of graphs that examines accuracy for images that were *not obstructed with bubbles (seen at 100% visibility)*
+
+Both groups perform near ceiling at all levels of stimulus duration with the exception of the shortest duration of 25 ms.
+For The aphantasic group, performance is lower at this duration for both backmasked and unbackmasked images.
+For the control group, this dip only occurs for backmasked images.
+
+
+```{r, echo=FALSE}
+acc_full <- ggarrange(aphantasia_accuracy_full, control_accuracy_full)
+acc_full
+#ggexport(acc_full,filename = "plots/plot_accuracy_full_2.png",height = 600, width = 1000)
+ggexport(acc_full,filename = "plots/figure_13.png",height = 600, width = 1000)
+```
+
+
+
+
+
+### Modeling Accuracy 
+
+
+#### Occluded Images
+
+We ran a linear mixed effects model to test trends seen in the above graphic.
+The model includes stimulus duration (SOA), back masking, and aphantasia group as fixed effects and participant as a random intercept.
+
+Accuracy ~ Stimulus_duration x back_masking x aphantasia + (1|participant)
+
+The model revealed significant effects of stimulus duration and backmasking.
+Accuracy increase the longer the image is on screen and decreases when the image is back masked by visual noise.
+
+There's also an interaction between aphantasia and back masking. This indicates that the aphantasia group was more greatly affected by the visual noise, *suggesting that their visual processing is less robust and more vulnerable to disruption*.
+
+```{r Accuracy LMER, echo =FALSE}
+
+aggregate_acc_model <- lmer(Accuracy ~ SOA*back_masked*aphantasia2 + (1|participant),
+     data = aphantasia_aggregate_data %>% filter(bubbled == "yes"))
+
+aggregate_acc_model_bis <- lmer(bis ~ SOA*back_masked*aphantasia2 + (1|participant),
+     data = aphantasia_aggregate_data %>% filter(bubbled == "yes"))
+
+aggregate_acc_model_bis_aphan <- lmer(bis ~ SOA*back_masked*aphantasia2 + (1|participant),
+     data = aphantasia_aggregate_data %>% filter(bubbled == "yes", aphantasia == "no"))
+
+
+tab_model(aggregate_acc_model)
+#tab_model(aggregate_acc_model_bis)
+
+#tab_model(aggregate_acc_model_bis_aphan)
+
+
+```
+
+
+
+Plots of <65 score cutoff
+
+```{r}
+
+aphantasia2_accuracy_bubbled <- ggline(aphantasia_aggregate_data %>% 
+                                        filter(bubbled == "yes", aphantasia2 == "yes"), 
+       x = "SOA", 
+       y = "Accuracy",
+       color = "back_masked", add = "mean_se",
+       ylim = c(0.3,0.8),
+       font.x = c(32, "black"),
+       font.y = c(32, "black")
+       ) +
+  xlab("Stimulus duration (ms)") +
+  ylab("Accuracy") +
+  labs(title = "(A)"
+       #,subtitle = "Aphantasia (Occluded Images)"
+       ) +
+  font("xy.text", size = 24)+
+  font("legend.text", size = 22) +
+  theme(plot.title = element_text(face = "bold", size =32),
+        legend.title = element_text(size = 22)) +
+  scale_color_discrete(name = "Backward Masked", labels = c("No", "Yes"))
+  #      axis.title = element_text(size = 20), 
+  #      axis.text = element_text(size=16),
+  #      legend.title = element_text(size = 16),
+  #      legend.text = element_text(size = 14))
+
+
+control2_accuracy_bubbled <- ggline(aphantasia_aggregate_data %>% 
+                                     filter(bubbled == "yes", aphantasia2 == "no"), 
+       x = "SOA", 
+       y = "Accuracy",
+       color = "back_masked", add = "mean_se",
+       ylim = c(0.3,0.8),
+       font.x = c(32, "black"),
+       font.y = c(32, "black")
+       ) +
+  xlab("Stimulus duration (ms)") +
+  ylab("Accuracy") +
+  labs(title = "(B)"
+       #,subtitle = "Control (Occluded Images)"
+       ) +
+  font("xy.text", size = 24)+
+  font("legend.text", size = 22) +
+  theme(plot.title = element_text(face = "bold", size =32),
+        legend.title = element_text(size = 22)) +
+  scale_color_discrete(name = "Backward Masked", labels = c("No", "Yes"))
+
+acc_bubble2 <- ggarrange(aphantasia2_accuracy_bubbled,control2_accuracy_bubbled)
+acc_bubble2
+#ggexport(acc_bubble,filename = "plots/plot_acc_bubbled_2.png",height = 600, width = 1000)
+ggexport(acc_bubble2,filename = "plots/acc_64_cutoff.png",height = 600, width = 1000)
+
+```
+
+
+
+
+
+#### Unoccluded Images
+
+Here's the same model but for images presented without bubbles (100% visibility)
+
+There's a three-way interaction between stimulus duartion (SOA), aphantasia, and backmasking.
+This seems to be driven by the dip in performance that occurs at the shortest duration (25ms) and how for controls it only occurs for backmasked images where in aphantasics this performance dip occurs for both backmasked and unbackmasked images.
+
+
+```{r, echo=FALSE}
+
+aggregate_acc_model_bubbless <- lmer(bis ~ SOA*back_masked*aphantasia2 + (1|participant),
+     data = aphantasia_aggregate_data %>% filter(bubbled == "no"))
+
+
+tab_model(aggregate_acc_model_bubbless)
+
+
+```
+
+
+
+
+
+## Reaction Time Analysis
+
+We also wanted to see then if participants with Aphantasia were slower at responding during the categorization task, which could reflect a difference in cognitive strategy or difference in the nature of the representations that they have to access to identify the object.
+
+These graphs show categorization reaction time for backmasked vs unmasked images for *partially occluded images* against stimulus duration.
+
+*We see that the Aphantasia group has slower performance compared to the control group for both partially occluded images as well as for images that were presented unoccluded*
+
+
+```{r RT graph, echo=FALSE}
+
+aphantasia_rt <- ggline(aphantasia_aggregate_data %>% filter(bubbled == "yes", aphantasia == "yes"), 
+       x = "SOA", 
+       y = "RT",
+       color = "back_masked", add = "mean_se",
+       ylim = c(0.3,1),
+       font.x = c(32, "black"),
+       font.y = c(32, "black")) +
+  xlab("Stimulus duration (ms)") +
+  ylab("Reaction Time (s)") +
+  labs(title = "(A)"
+       #,
+       #subtitle = "Aphantasia"
+       ) +
+  font("xy.text", size = 24)+
+  font("legend.text", size = 22) +
+  theme(plot.title = element_text(face = "bold", size =32),
+        legend.title = element_text(size = 22)) +
+  scale_color_discrete(name = "Backward Masked", labels = c("No", "Yes"))
+        #axis.title = element_text(size = 20), 
+        #axis.text = element_text(size=16),
+        #legend.title = element_text(size = 16),
+        #legend.text = element_text(size = 14))
+
+
+control_rt <- ggline(aphantasia_aggregate_data %>% filter(bubbled == "yes", aphantasia == "no"), 
+       x = "SOA", 
+       y = "RT",
+       color = "back_masked", add = "mean_se",
+       ylim = c(0.3,1),
+       font.x = c(32, "black"),
+       font.y = c(32, "black")) +
+  xlab("Stimulus duration (ms)") +
+  ylab("Reaction Time (s)") +
+  labs(title = "(B)"
+       #,
+       #subtitle = "Control"
+       ) +
+  font("xy.text", size = 24)+
+  font("legend.text", size = 22) +
+  theme(plot.title = element_text(face = "bold", size =32),
+        legend.title = element_text(size = 22)) +
+  scale_color_discrete(name = "Backward Masked", labels = c("No", "Yes"))
+        #axis.title = element_text(size = 20), 
+        #axis.text = element_text(size=16),
+        #legend.title = element_text(size = 16),
+        #legend.text = element_text(size = 14))
+
+## no bubbles
+
+aphantasia_rt_bubbless <- ggline(aphantasia_aggregate_data %>% filter(bubbled == "no", aphantasia2 == "yes"), 
+       x = "SOA", 
+       y = "RT",
+       color = "back_masked", add = "mean_se",
+       ylim = c(0.3,1)) +
+  xlab("Stimulus duration (ms)") +
+  ylab("Reaction Time (s)") +
+  labs(title = "RT vs \nStimulus Duration",
+       subtitle = "Aphantasia (Unoccluded Images)") +
+  theme(plot.title = element_text(face = "bold", size =18), 
+        axis.title = element_text(size = 20), 
+        axis.text = element_text(size=16),
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 14))
+
+control_rt_bubbless <- ggline(aphantasia_aggregate_data %>% filter(bubbled == "no", aphantasia2 == "no"), 
+       x = "SOA", 
+       y = "RT",
+       color = "back_masked", add = "mean_se",
+       ylim = c(0.3,1)) +
+  xlab("Stimulus duration (ms)") +
+  ylab("Reaction Time (s)") +
+  labs(title = "RT vs \nStimulus Duration",
+       subtitle = "Control (Unoccluded Images)") +
+  theme(plot.title = element_text(face = "bold", size =18), 
+        axis.title = element_text(size = 20), 
+        axis.text = element_text(size=16),
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 14))
+
+
+rt_bubble <- ggarrange(aphantasia_rt, control_rt)
+rt_bubble
+#ggexport(rt_bubble,filename = "plots/plot_rt_bubbled_2.png",height = 600, width = 1000)
+ggexport(rt_bubble,filename = "plots/figure_15.png",height = 600, width = 1000)
+ggarrange(aphantasia_rt_bubbless, control_rt_bubbless)
+
+
+
+```
+
+
+
+
+
+
+### Modeling RT
+
+
+#### Occluded Images
+
+
+Similar to our analysis on accuracy, We ran a linear mixed effects model to test trends in reaction time.
+The model also included stimulus duration (SOA), back masking, and aphantasia group as fixed effects and participant as a random intercept.
+
+Reaction_time ~ Stimulus_duration x back_masking x aphantasia + (1|participant)
+
+
+This model revealed a significant effect of aphantasia group, indicating that individuals with Aphantasia are slower to respond compared to controls.
+
+
+```{r LMER RT, echo=FALSE}
+
+
+aggregate_rt_model <- lmer(RT ~ SOA*aphantasia2*back_masked + (1|participant),
+     data = aphantasia_aggregate_data %>% filter(bubbled == "yes"))
+
+
+
+tab_model(aggregate_rt_model)
+
+
+```
+
+
+
+
+#### Unoccluded Images
+
+Let's also look at RT for images that were presented at 100% visibility.
+
+We see that with 100% visibility, both aphantasics and controls reach a ceiling in their RTs, the trend is relatively flat across stimulus durations (SAO).
+We still see that aphantasics are slower than controls, suggesting that they're just generally slower to perform this task (marginally significant).
+
+```{r, include=FALSE}
+
+ggarrange(aphantasia_rt_bubbless,control_rt_bubbless)
+
+aggregate_rt_bubbless_model <- lmer(RT ~ SOA*aphantasia2*back_masked + (1|participant),
+     data = aphantasia_aggregate_data %>% filter(bubbled == "no"))
+
+tab_model(aggregate_rt_bubbless_model)
+
+```
+
+
+# Speed-Accuracy Trade-Offs
+
+The above analysis indicates that the aphantasia group had greater categorization accuracy but also longer reaction times than the control group. Because these two findings occurred together, the differences in accuracy could actually reflect differences in speed-accuracy trade-off criterion (where the aphantasia group made slower responses in favour of accuracy).
+
+To test this interpretation, we reran the analysis on occluded images. However this time we used a performance measure known as the Balanced Integration Score (BIS). This measure incorporates both accuracy and reaction time and has been found to be insensitive to speed-accuracy trade-offs. The BIS is taken as the difference between the standardized scores of accuracy and reaction time.
+
+*If the effect of aphantasia group is no longer present in this analysis, we can conclude that the previously observed differences in accuracy most likely reflected differences speed-accuracy trade-off criterion*.
+
+The below graphs plot BIS against stimulus duration, again grouped by back masking and aphantasia group
+
+The data shows trends similar to those observed when we analyzed accuracy. So let's take a look at another linear mixed model to see if the effects changed.
+
+```{r BIS by soa, echo=FALSE}
+
+# Create graphs for accuracy data
+
+## For bubbled images
+
+aphantasia_BIS_bubbled <- ggline(aphantasia_aggregate_data %>% 
+                                        filter(bubbled == "yes", aphantasia2 == "yes"), 
+       x = "SOA", 
+       y = "bis",
+       color = "back_masked", add = "mean_se",
+       ylim = c(-3,0.5),
+       font.x = c(32, "black"),
+       font.y = c(32, "black")) +
+  xlab("Stimulus duration (ms)") +
+  ylab("BIS") +
+  labs(title = "(A)"
+       #,
+       #subtitle = "Aphantasia (Occluded Images)"
+       ) +
+  font("xy.text", size = 24)+
+  font("legend.text", size = 22) +
+  theme(plot.title = element_text(face = "bold", size =32),
+        legend.title = element_text(size = 22)) +
+  scale_color_discrete(name = "Backward Masked", labels = c("No", "Yes"))
+        #axis.title = element_text(size = 20), 
+        #axis.text = element_text(size=16),
+        #legend.title = element_text(size = 16),
+        #legend.text = element_text(size = 14))
+
+
+control_BIS_bubbled <- ggline(aphantasia_aggregate_data %>% 
+                                     filter(bubbled == "yes", aphantasia2 == "no"), 
+       x = "SOA", 
+       y = "bis",
+       color = "back_masked", add = "mean_se",
+       ylim = c(-3,0.5),
+       font.x = c(32, "black"),
+       font.y = c(32, "black")) +
+  xlab("Stimulus duration (ms)") +
+  ylab("BIS") +
+  labs(title = "(B)"
+       #,
+       #subtitle = "Control(Occluded Images)"
+       ) +
+  font("xy.text", size = 24)+
+  font("legend.text", size = 22) +
+  theme(plot.title = element_text(face = "bold", size =32),
+        legend.title = element_text(size = 22)) +
+  scale_color_discrete(name = "Backward Masked", labels = c("No", "Yes"))
+        #axis.title = element_text(size = 20), 
+        #axis.text = element_text(size=16),
+        #legend.title = element_text(size = 16),
+        #legend.text = element_text(size = 14))
+
+
+bis_plot<-ggarrange(aphantasia_BIS_bubbled,control_BIS_bubbled)
+bis_plot
+#ggexport(bis_plot,filename = "plots/plot_bis_3.png",height = 600, width = 1000)
+ggexport(bis_plot,filename = "plots/figure_1.png",height = 600, width = 1000)
+
+```
+
+The model includes stimulus duration, back masking, and aphantasia group as fixed effects and participant as a random intercept.
+
+BIS ~ Stimulus_duration x back_masking x aphantasia + (1|participant)
+
+In this model, using a performance measure that incorporates accuracy and reaction time, we see that the effects of stimulus duration (SOA) and back masking are preserved.
+Most importantly, there remains a significant interaction between back masking and aphantasia group.
+
+However, note that the effect of aphantasia is no longer significant.
+
+```{r, echo=FALSE}
+tab_model(aggregate_acc_model_bis)
+```
+  
+  
+  
+# Conclusions
+
+From this study, we learn that individuals with aphantasia are differentially impacted by visual noise compared to controls.
+
+The presentation of visual noise had a larger negative impact on the aphantasia group, suggesting that their visual processing is more vulnerable to disruption.
