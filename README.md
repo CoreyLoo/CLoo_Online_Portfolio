@@ -11,7 +11,7 @@ email: coreyloo95@gmail.com
 
 This research project was completed as part of my PhD thesis work.
 The above link is to a markdown file describing the analysis.
-Here is the [script used to create that markdown file](Apantasia_research_project/aphantasia_research_project.Rmd) 
+Here is the [script used to create that markdown file](Aphantasia_research_project/aphantasia_research_project.Rmd) 
 
 In this project, I was interested in the experience of individuals who are unable to form mental images, a condition known as aphantasia.
 If I were to ask you to imagine an apple in your mind, the chances are that you visualise an image of an apple in your mind's eye.
