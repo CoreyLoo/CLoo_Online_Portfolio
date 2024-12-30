@@ -14,8 +14,8 @@ The above link is to a markdown file describing the analysis.
 Here is the [script used to create that markdown file](Aphantasia_research_project/aphantasia_research_project.Rmd) 
 
 Skills demonstrated:
--Data visualization
--Data analysis
+- Data visualization
+- Data analysis
 
 # Independent Projects in Python
 
