@@ -19,7 +19,7 @@ Skills demonstrated:
 
 # Independent Projects in Python
 
-## [Project 1: Supermarket Loyalty - Predicting Customer Spending](Supermarket Loyalty - Predicting Customer Spending/CLoo_Practical_Exam_Supermarket_Loyalty.ipynb)
+## [Project 1: Supermarket Loyalty - Predicting Customer Spending](Supermarket_Loyalty/CLoo_Practical_Exam_Supermarket_Loyalty.ipynb)
 
 This project was completed as part of a practical exam for the Associate Data Scientist Certificate from Datacamp.
 
@@ -33,7 +33,7 @@ Skills demonstrated:
 
 # Independent Projects in SQL
 
-## [Project 1: Impact Analysis of GoodThought NGO Initiatives](Supermarket Loyalty - Predicting Customer Spending/CLoo_Practical_Exam_Supermarket_Loyalty.ipynb)
+## [Project 1: Impact Analysis of GoodThought NGO Initiatives](GoodThought_NGO_Initiatives/GoodThought_project.ipynb)
 
 In this project I analyzed the charity assignments of GoodThought NGO where I:
 - Listed the top five assignments by total donation value, categorized by donor type.
