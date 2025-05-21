@@ -33,7 +33,7 @@ Skills demonstrated:
 
 # Independent Projects in SQL
 
-## [Project 1: Impact Analysis of GoodThought NGO Initiatives](GoodThought_NGO_Initiatives/GoodThought_project.ipynb)
+## [Project 1: Impact Analysis of GoodThought NGO Initiatives](https://www.datacamp.com/datalab/w/11aec87b-e9df-407d-8252-7821bad02243/edit)
 
 In this project I analyzed the charity assignments of GoodThought NGO where I:
 - Listed the top five assignments by total donation value, categorized by donor type.
