@@ -19,11 +19,22 @@ Skills demonstrated:
 
 # Independent Projects in Python
 
-## [Project 1: Datacamp Practical Exam - Supermarket Loyalty](Project_1/CLoo_Practical_Exam_Supermarket_Loyalty.ipynb)
+## [Project 1: Supermarket Loyalty - Predicting Customer Spending](Project_1/CLoo_Practical_Exam_Supermarket_Loyalty.ipynb)
 
 This project was completed as part of a practical exam for the Associate Data Scientist Certificate from Datacamp.
+
+In this project, I analyzed the spending habits of customers of International Essentials, an international supermarket chain.
+By analyzing customer traits such as previous spending habits and years enrolled in the loyalty program, I trained and tuned a linear regression model to predict the amount each customer would spend during the next year.
 
 Skills demonstrated:
 - Data cleaning and wraggling
 - Model implementation (model fitting and cross-validation)
 - Model tuning (feature selection and hyper parameter tuning)
+
+# Independent Projects in SQL
+
+## [Project 1: Impact Analysis of GoodThought NGO Initiatives] (https://www.datacamp.com/datalab/w/11aec87b-e9df-407d-8252-7821bad02243/edit)
+
+In this project I analyzed the charity assignments of GoodThought NGO where I:
+- Listed the top five assignments by total donation value, categorized by donor type.
+- Identified the highest impact score assignment per region, with at least one donation.
