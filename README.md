@@ -19,7 +19,7 @@ Skills demonstrated:
 
 # Independent Projects in Python
 
-## [Project 1: Supermarket Loyalty - Predicting Customer Spending](Project_1/CLoo_Practical_Exam_Supermarket_Loyalty.ipynb)
+## [Project 1: Supermarket Loyalty - Predicting Customer Spending](Supermarket Loyalty - Predicting Customer Spending/CLoo_Practical_Exam_Supermarket_Loyalty.ipynb)
 
 This project was completed as part of a practical exam for the Associate Data Scientist Certificate from Datacamp.
 
