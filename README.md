@@ -31,6 +31,9 @@ Skills demonstrated:
 - Model implementation (model fitting and cross-validation)
 - Model tuning (feature selection and hyper parameter tuning)
 
+## [Project 2: Predicting Movie Rental Durations](Predicting_Movie_Rental_Durations/prediciting_movie_rentals.ipynb)
+
+
 # Independent Projects in SQL
 
 ## [Project 1: Impact Analysis of GoodThought NGO Initiatives](https://www.datacamp.com/datalab/w/11aec87b-e9df-407d-8252-7821bad02243/edit)
